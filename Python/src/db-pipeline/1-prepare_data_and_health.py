@@ -723,6 +723,63 @@ def generate_summary(fly_status):
 #   DATABASE FUNCTIONS
 # ============================================================
 
+def fly_ids_without_usable_mt_or_pn(dam_merged):
+    """
+    Fly IDs that should not be written to the database: missing MT or Pn entirely,
+    or no non-zero MT, or no non-zero Pn anywhere in the loaded window.
+
+    This drops empty/dead channels and purely flat zero-MT traces (including
+    MT=0 with constant non-zero Pn, which still fails the MT rule).
+    """
+    if dam_merged is None or len(dam_merged) == 0:
+        return set()
+
+    if 'fly_id' not in dam_merged.columns or 'reading' not in dam_merged.columns:
+        return set()
+
+    all_ids = dam_merged['fly_id'].dropna().astype(str).unique()
+    excluded = set()
+
+    mt = dam_merged[dam_merged['reading'] == 'MT']
+    pn = dam_merged[dam_merged['reading'] == 'Pn']
+
+    mt_max = mt.groupby('fly_id', sort=False)['value'].max() if len(mt) else pd.Series(dtype=float)
+    pn_max = pn.groupby('fly_id', sort=False)['value'].max() if len(pn) else pd.Series(dtype=float)
+    mt_max.index = mt_max.index.astype(str)
+    pn_max.index = pn_max.index.astype(str)
+    mt_ids = set(mt_max.index)
+    pn_ids = set(pn_max.index)
+
+    for fid in all_ids:
+        fid = str(fid)
+        if fid not in mt_ids:
+            excluded.add(fid)
+            continue
+        if fid not in pn_ids:
+            excluded.add(fid)
+            continue
+        m_mt = float(mt_max.loc[fid])
+        m_pn = float(pn_max.loc[fid])
+        if not np.isfinite(m_mt) or m_mt <= 0:
+            excluded.add(fid)
+            continue
+        if not np.isfinite(m_pn) or m_pn <= 0:
+            excluded.add(fid)
+            continue
+
+    return excluded
+
+
+def _fly_id_col_from_monitor_channel(monitor_series, channel_series):
+    """Match fly_id convention in parse_details / dam_merged."""
+    return (
+        'M'
+        + monitor_series.astype(str)
+        + '_Ch'
+        + channel_series.astype(str).str.zfill(2)
+    )
+
+
 def create_experiment(name, start_date, end_date=None, lights_on=9, lights_off=21):
     """Create a new experiment and return experiment_id."""
     if not USE_DATABASE or not DB_AVAILABLE:
@@ -1317,6 +1374,30 @@ def prepare_data_and_health(
             print(f" ✓ (ID: {experiment_id})")
             
             if experiment_id:
+                excluded_db = fly_ids_without_usable_mt_or_pn(dam_merged)
+                if excluded_db:
+                    n_before = dam_merged['fly_id'].nunique()
+                    print(
+                        f"  Excluding {len(excluded_db)} flies (no usable MT/Pn: all-zero or missing type) "
+                        f"from database..."
+                    , end='', flush=True)
+                    dam_merged = dam_merged[~dam_merged['fly_id'].isin(excluded_db)].copy()
+                    f_sid = _fly_id_col_from_monitor_channel(
+                        fly_status['monitor'], fly_status['channel']
+                    )
+                    fly_status = fly_status[~f_sid.isin(excluded_db)].copy()
+                    hr_fid = _fly_id_col_from_monitor_channel(
+                        health_report['monitor'], health_report['channel']
+                    )
+                    health_report = health_report[~hr_fid.isin(excluded_db)].copy()
+                    n_after = dam_merged['fly_id'].nunique()
+                    print(f" ✓ ({n_before} → {n_after} flies)")
+                    if n_after == 0:
+                        raise RuntimeError(
+                            "All flies were excluded from DB (no non-zero MT and non-zero Pn). "
+                            "Check monitor files and details.txt."
+                        )
+
                 save_to_database(dam_merged, health_report, fly_status, experiment_id, actual_exp_start)
         except psycopg2.Error as e:
             # Raise error if database is required

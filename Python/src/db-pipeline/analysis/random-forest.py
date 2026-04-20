@@ -20,6 +20,9 @@ import sys
 import argparse
 import pandas as pd
 import numpy as np
+import matplotlib
+# Use non-interactive backend to avoid Tkinter issues on headless/CLI runs
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -325,10 +328,20 @@ def evaluate_model(model, X_test, y_test, output_dir):
     
     # Plot confusion matrix
     plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
-    plt.title('Confusion Matrix (Test Set)')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt='d',
+        cmap='Blues',
+        xticklabels=classes,
+        yticklabels=classes,
+        annot_kws={'fontsize': 18}
+    )
+    plt.title('Confusion Matrix (Test Set)', fontsize=18, fontweight='bold')
+    plt.ylabel('True Label', fontsize=14)
+    plt.xlabel('Predicted Label', fontsize=14)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'), dpi=300)
     plt.close()
@@ -343,7 +356,7 @@ def evaluate_model(model, X_test, y_test, output_dir):
     }
 
 
-def plot_feature_importance(model, feature_names, output_dir, top_n=20):
+def plot_feature_importance(model, feature_names, output_dir, top_n=28):
     """
     Plot and save feature importance.
     
@@ -355,26 +368,71 @@ def plot_feature_importance(model, feature_names, output_dir, top_n=20):
     """
     print(f"\n[Feature Importance] Extracting top {top_n} features...")
     
-    # Get feature importance
-    importances = model.feature_importances_
+    # Get feature importance (avoid multi-threading issues on some Windows setups)
+    old_n_jobs = getattr(model, 'n_jobs', None)
+    try:
+        if old_n_jobs is not None and old_n_jobs != 1:
+            model.n_jobs = 1
+        importances = model.feature_importances_
+    finally:
+        if old_n_jobs is not None:
+            model.n_jobs = old_n_jobs
     indices = np.argsort(importances)[::-1]
     
-    # Create DataFrame
-    importance_df = pd.DataFrame({
-        'feature': [feature_names[i] for i in indices[:top_n]],
-        'importance': importances[indices[:top_n]]
+    # Create full DataFrame (all features, sorted)
+    importance_all_df = pd.DataFrame({
+        'feature': [feature_names[i] for i in indices],
+        'importance': importances[indices]
     })
     
-    # Save to CSV
+    # Save all features to CSV
     importance_file = os.path.join(output_dir, 'feature_importance.csv')
-    importance_df.to_csv(importance_file, index=False)
-    print(f"  ✓ Saved feature importance: {importance_file}")
+    importance_all_df.to_csv(importance_file, index=False)
+    print(f"  ✓ Saved feature importance (all features): {importance_file}")
     
     # Plot
+    importance_df = importance_all_df.head(top_n).copy()
+
+    # Short, plot-ready labels for y-axis (keep CSV with original names)
+    short_labels = {
+        "mesor_mean_z": "Mesor",
+        "mesor_sd_z": "Mesor variation",
+        "amplitude_mean_z": "Amplitude",
+        "amplitude_sd_z": "Amplitude variation",
+        "phase_mean_z": "Phase",
+        "phase_sd_z": "Phase Variation",
+        "periodogram_period_mean_z": "Period",
+        "periodogram_period_sd_z": "Period Variation",
+        "periodogram_power_mean_z": "Rhythmicity",
+        "total_sleep_mean_z": "Total sleep time",
+        "day_sleep_mean_z": "Daytime sleep",
+        "night_sleep_mean_z": "Nighttime sleep",
+        "total_bouts_mean_z": "Total number of sleep bouts",
+        "day_bouts_mean_z": "Number of daytime sleep bouts",
+        "night_bouts_mean_z": "Number of nighttime sleep bouts",
+        "mean_bout_mean_z": "Mean sleep bout duration",
+        "max_bout_mean_z": "Longest sleep bout duration",
+        "mean_day_bout_mean_z": "Mean day sleep bout duration",
+        "max_day_bout_mean_z": "Longest day sleep bout duration",
+        "mean_night_bout_mean_z": "Mean night sleep bout duration",
+        "max_night_bout_mean_z": "Longest night sleep bout duration",
+        "frag_bouts_per_hour_mean_z": "Sleep bouts per hour",
+        "frag_bouts_per_min_sleep_mean_z": "Sleep interruption rate",
+        "mean_wake_bout_mean_z": "Wake bout duration",
+        "p_wake_mean_z": "P(wake)",
+        "p_doze_mean_z": "P(doze)",
+        "sleep_latency_mean_z": "Sleep latency",
+        "waso_mean_z": "Wake time after sleep onset (WASO)",
+    }
+    importance_df['display'] = importance_df['feature'].map(lambda x: short_labels.get(x, x))
+
     plt.figure(figsize=(10, 8))
-    sns.barplot(data=importance_df, y='feature', x='importance', palette='viridis')
-    plt.title(f'Top {top_n} Feature Importance (Random Forest)')
-    plt.xlabel('Importance')
+    sns.barplot(data=importance_df, y='display', x='importance', palette='viridis')
+    plt.title(f'Top {top_n} Feature Importance (Random Forest)', fontsize=18, fontweight='bold')
+    plt.xlabel('Importance', fontsize=14)
+    plt.ylabel('Feature', fontsize=14)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'feature_importance.png'), dpi=300)
     plt.close()

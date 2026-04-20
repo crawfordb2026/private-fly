@@ -542,7 +542,8 @@ def clean_ml_features(
                 'mean_day_bout_mean_z', 'max_day_bout_mean_z', 'mean_night_bout_mean_z',
                 'max_night_bout_mean_z', 'frag_bouts_per_hour_mean_z',
                 'frag_bouts_per_min_sleep_mean_z', 'mean_wake_bout_mean_z',
-                'p_wake_mean_z', 'p_doze_mean_z', 'sleep_latency_mean_z', 'waso_mean_z'
+                'p_wake_mean_z', 'p_doze_mean_z', 'sleep_latency_mean_z', 'waso_mean_z',
+                'periodogram_period_mean_z', 'periodogram_period_sd_z', 'periodogram_power_mean_z'
             ]
             
             # Select only columns that are in the valid list

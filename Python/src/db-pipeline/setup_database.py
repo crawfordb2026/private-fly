@@ -35,7 +35,7 @@ def create_database():
         conn.close()
 
 def create_schema():
-    """Execute schema.sql to create all tables and indexes."""
+    """Execute schema.sql to reset and recreate schema objects."""
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
             schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
@@ -46,7 +46,7 @@ def create_schema():
             cur.execute(schema_sql)
             
             conn.commit()
-    print("Schema created successfully!")
+    print("Schema reset and created successfully!")
 
 if __name__ == "__main__":
     print("Setting up database...")

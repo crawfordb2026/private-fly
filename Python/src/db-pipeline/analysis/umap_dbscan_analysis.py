@@ -5,7 +5,7 @@ UMAP + DBSCAN Cluster Analysis Pipeline
 VEH-only unsupervised clustering and pattern discovery
 
 This script performs:
-1. UMAP dimensionality reduction on top 10 features
+1. UMAP dimensionality reduction on PC1..PCN from pca_scores.csv (from pca_analysis.py)
 2. DBSCAN clustering with automated eps detection
 3. Cluster × genotype enrichment analysis
 4. Cluster behavioral signatures
@@ -14,6 +14,9 @@ This script performs:
 
 Usage:
     python umap_dbscan_analysis.py [--experiment-id ID] [--output-dir analysis_results/umap]
+    python umap_dbscan_analysis.py --pca-scores-csv path/to/pca_scores.csv
+
+Run pca_analysis.py first so analysis_results/pca/pca_scores.csv exists (or pass --pca-scores-csv).
 """
 
 import os
@@ -31,6 +34,7 @@ import umap
 from sklearn.cluster import DBSCAN
 import scikit_posthocs as sp
 from importlib import import_module
+import hdbscan
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -68,6 +72,9 @@ TOP_FEATURES = [
     "sleep_latency_mean_z",
     "mean_wake_bout_mean_z"
 ]
+
+# UMAP input: first N principal components from pca_scores.csv (run pca_analysis.py first)
+N_PCS_FOR_UMAP = 5
 
 
 def load_data_from_db(experiment_id=None):
@@ -142,30 +149,63 @@ def subset_vehicle(df):
     return df_veh
 
 
-def prepare_umap_data(df_veh):
-    """Prepare data for UMAP - select top features."""
-    print("\n[UMAP] Preparing data for UMAP...")
-    
-    # Check which top features are available
-    available_features = [f for f in TOP_FEATURES if f in df_veh.columns]
-    missing_features = [f for f in TOP_FEATURES if f not in df_veh.columns]
-    
-    if missing_features:
-        print(f"  ⚠ Warning: {len(missing_features)} features not found:")
-        print(f"     {missing_features}")
-    
-    if len(available_features) < 5:
-        raise ValueError(f"Need at least 5 features for UMAP, found {len(available_features)}")
-    
-    print(f"  Using {len(available_features)} features for UMAP")
-    umap_data = df_veh[available_features].copy()
-    
-    # Remove any NaN values
+def prepare_umap_data_from_pca_csv(df_veh, pca_scores_path, experiment_id, n_pcs):
+    """
+    Load PC1..PCn from pca_scores.csv and align rows with df_veh (VEH flies in DB).
+
+    Returns:
+        umap_data: DataFrame indexed by fly_id, columns PC1..PCk
+        pc_cols: list of column names used
+    """
+    print("\n[UMAP] Preparing data from PCA scores CSV...")
+    path = Path(pca_scores_path)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"PCA scores file not found: {path}\n"
+            "Run pca_analysis.py first (same experiment) or pass --pca-scores-csv."
+        )
+    pca_df = pd.read_csv(path)
+    pca_df.columns = [c.lower() if isinstance(c, str) else c for c in pca_df.columns]
+    if 'fly_id' not in pca_df.columns:
+        raise ValueError(f"PCA CSV must contain fly_id: {path}")
+
+    if experiment_id is not None and 'experiment_id' in pca_df.columns:
+        pca_df = pca_df[pca_df['experiment_id'] == experiment_id]
+        print(f"  Filtered CSV to experiment_id={experiment_id}: {len(pca_df)} rows")
+
+    if len(pca_df) == 0:
+        raise ValueError("No rows left in PCA CSV after experiment filter.")
+
+    pc_available = []
+    for i in range(1, n_pcs + 1):
+        # Column names are lowercased above; PCA scores use pc1, pc2, ...
+        col = f'pc{i}'
+        if col not in pca_df.columns:
+            break
+        pc_available.append(col)
+
+    if len(pc_available) < 2:
+        raise ValueError(
+            f"Need at least PC1 and PC2 in CSV; found columns up to {pc_available or 'none'}."
+        )
+
+    umap_data = pca_df[pc_available].copy()
+    umap_data.index = pca_df['fly_id'].astype(str)
     umap_data = umap_data.dropna()
-    if len(umap_data) < len(df_veh):
-        print(f"  ⚠ Removed {len(df_veh) - len(umap_data)} rows with NaN")
-    
-    return umap_data, available_features
+    if len(umap_data) < len(pca_df):
+        print(f"  ⚠ Removed {len(pca_df) - len(umap_data)} rows with NaN in PC columns")
+
+    veh_ids = set(df_veh['fly_id'].astype(str))
+    before = len(umap_data)
+    umap_data = umap_data[umap_data.index.isin(veh_ids)]
+    if len(umap_data) < before:
+        print(f"  ⚠ Restricted to {len(umap_data)} flies present in VEH subset (dropped {before - len(umap_data)} not in DB VEH)")
+
+    if len(umap_data) < 2:
+        raise ValueError("Need at least 2 flies for UMAP after alignment with VEH data.")
+
+    print(f"  Using {len(pc_available)} input dimensions: {pc_available[0]} … {pc_available[-1]} ({len(umap_data)} flies)")
+    return umap_data, pc_available
 
 
 def run_umap(umap_data, random_state=123):
@@ -174,7 +214,7 @@ def run_umap(umap_data, random_state=123):
     print("STEP 1: UMAP DIMENSIONALITY REDUCTION")
     print("="*60)
     
-    print(f"\n[UMAP] Running UMAP on {len(umap_data)} flies, {umap_data.shape[1]} features...")
+    print(f"\n[UMAP] Running UMAP on {len(umap_data)} flies, {umap_data.shape[1]} input dimensions...")
     print(f"  Parameters: n_neighbors=15, min_dist=0.25, metric=euclidean")
     
     reducer = umap.UMAP(
@@ -193,18 +233,19 @@ def run_umap(umap_data, random_state=123):
 
 
 def create_umap_dataframe(umap_result, df_veh, umap_data):
-    """Create UMAP DataFrame with metadata."""
+    """Create UMAP DataFrame with metadata (join on fly_id)."""
     umap_df = pd.DataFrame(
         umap_result,
         columns=['UMAP1', 'UMAP2'],
         index=umap_data.index
     )
-    
-    # Add metadata
-    meta_cols = ['fly_id', 'genotype', 'sex', 'monitor', 'channel']
-    umap_df = umap_df.join(df_veh.loc[umap_data.index, meta_cols])
-    
-    return umap_df
+    # Ensure the index is not named 'fly_id' to avoid ambiguity later
+    umap_df.index.name = None
+    dfi = df_veh.set_index('fly_id').loc[umap_data.index]
+    umap_df = umap_df.join(dfi[['genotype', 'sex', 'monitor', 'channel']])
+    umap_df['fly_id'] = umap_df.index
+    cols = ['fly_id', 'UMAP1', 'UMAP2', 'genotype', 'sex', 'monitor', 'channel']
+    return umap_df[cols]
 
 
 def plot_umap_genotype(umap_df, output_dir):
@@ -225,10 +266,11 @@ def plot_umap_genotype(umap_df, output_dir):
             s=100, alpha=0.9, edgecolors='black', linewidths=0.5
         )
     
-    ax.set_xlabel('UMAP1', fontsize=12)
-    ax.set_ylabel('UMAP2', fontsize=12)
-    ax.set_title('UMAP of Vehicle Flies (Top Features Only)', fontsize=14, fontweight='bold')
-    ax.legend(title='Genotype', fontsize=10)
+    ax.set_xlabel('UMAP1', fontsize=14)
+    ax.set_ylabel('UMAP2', fontsize=14)
+    ax.set_title('UMAP of Vehicle Flies (PCA scores)', fontsize=18, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(title='Genotype', fontsize=14, title_fontsize=14)
     ax.grid(True, alpha=0.3)
     
     path = os.path.join(output_dir, 'umap_genotype.png')
@@ -257,10 +299,11 @@ def plot_umap_sex(umap_df, output_dir):
             s=100, alpha=0.9, edgecolors='black', linewidths=0.5
         )
     
-    ax.set_xlabel('UMAP1', fontsize=12)
-    ax.set_ylabel('UMAP2', fontsize=12)
-    ax.set_title('UMAP of Vehicle Flies by Sex', fontsize=14, fontweight='bold')
-    ax.legend(title='Sex', fontsize=10)
+    ax.set_xlabel('UMAP1', fontsize=14)
+    ax.set_ylabel('UMAP2', fontsize=14)
+    ax.set_title('UMAP of Vehicle Flies by Sex', fontsize=18, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(title='Sex', fontsize=14, title_fontsize=14)
     ax.grid(True, alpha=0.3)
     
     path = os.path.join(output_dir, 'umap_sex.png')
@@ -295,10 +338,11 @@ def plot_umap_genotype_sex(umap_df, output_dir):
                     edgecolors='black', linewidths=0.5
                 )
     
-    ax.set_xlabel('UMAP1', fontsize=12)
-    ax.set_ylabel('UMAP2', fontsize=12)
-    ax.set_title('UMAP of Vehicle Flies (Genotype + Sex)', fontsize=14, fontweight='bold')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+    ax.set_xlabel('UMAP1', fontsize=14)
+    ax.set_ylabel('UMAP2', fontsize=14)
+    ax.set_title('UMAP of Vehicle Flies (Genotype + Sex)', fontsize=18, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=14, title_fontsize=14)
     ax.grid(True, alpha=0.3)
     
     path = os.path.join(output_dir, 'umap_genotype_sex.png')
@@ -431,9 +475,9 @@ def run_dbscan(umap_xy, eps, k=5, random_state=123):
     return clusters
 
 
-def plot_dbscan_clusters(umap_df, output_dir):
-    """Plot DBSCAN clusters on UMAP."""
-    print("\n[Plot] Creating DBSCAN cluster plot...")
+def plot_dbscan_clusters(umap_df, output_dir, filename='dbscan_clusters.png', title='DBSCAN Clusters on UMAP (Automated eps)'):
+    """Plot clusters on UMAP coordinates with customizable title/filename."""
+    print(f"\n[Plot] Creating cluster plot: {title}...")
     
     fig, ax = plt.subplots(figsize=(10, 8))
     
@@ -461,17 +505,119 @@ def plot_dbscan_clusters(umap_df, output_dir):
             s=100, alpha=0.9, edgecolors='black', linewidths=0.5
         )
     
-    ax.set_xlabel('UMAP1', fontsize=12)
-    ax.set_ylabel('UMAP2', fontsize=12)
-    ax.set_title('DBSCAN Clusters on UMAP (Automated eps)', fontsize=14, fontweight='bold')
-    ax.legend(title='Cluster', fontsize=10)
+    ax.set_xlabel('UMAP1', fontsize=14)
+    ax.set_ylabel('UMAP2', fontsize=14)
+    ax.set_title(title, fontsize=18, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(title='Cluster', fontsize=14, title_fontsize=14)
     ax.grid(True, alpha=0.3)
     
-    path = os.path.join(output_dir, 'dbscan_clusters.png')
+    path = os.path.join(output_dir, filename)
     plt.tight_layout()
     plt.savefig(path, dpi=300, bbox_inches='tight')
     print(f"✓ Saved: {path}")
     plt.close()
+
+
+def plot_cluster_genotype_pies(umap_df, output_dir, cluster_label='HDBSCAN'):
+    """Plot genotype composition pie charts for each non-noise cluster."""
+    print(f"\n[Plot] Creating {cluster_label} cluster genotype pie charts...")
+
+    # Exclude noise cluster for composition plots
+    df_plot = umap_df[umap_df['cluster'] != -1].copy()
+    if df_plot.empty:
+        print("  ⚠ No non-noise clusters available for pie charts.")
+        return
+
+    clusters = sorted(df_plot['cluster'].unique())
+    n_clusters = len(clusters)
+
+    # Grid layout: up to 3 pie charts per row
+    n_cols = min(3, n_clusters)
+    n_rows = int(np.ceil(n_clusters / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 7.0 * n_rows))
+    axes = np.atleast_1d(axes).flatten()
+
+    # Stable genotype colors across charts
+    genotypes_all = sorted(df_plot['genotype'].dropna().unique())
+    colors = plt.cm.Set2(np.linspace(0, 1, max(3, len(genotypes_all))))
+    color_map = {g: colors[i] for i, g in enumerate(genotypes_all)}
+
+    for i, cluster in enumerate(clusters):
+        ax = axes[i]
+        sub = df_plot[df_plot['cluster'] == cluster]
+        counts = sub['genotype'].value_counts().sort_index()
+        total = int(counts.sum())
+        pie_colors = [color_map.get(g, 'gray') for g in counts.index]
+        pcts = counts.values / total * 100
+
+        # Only annotate slices >= 5%; smaller slices get no in-slice text
+        def make_autopct(pct_values):
+            def autopct(pct):
+                return f'{pct:.1f}%' if pct >= 5 else ''
+            return autopct
+
+        wedges, _, _ = ax.pie(
+            counts.values,
+            labels=None,           # labels go in legend to avoid overlap
+            colors=pie_colors,
+            autopct=make_autopct(pcts),
+            pctdistance=0.75,
+            startangle=90,
+            counterclock=False,
+            textprops={'fontsize': 11}
+        )
+        legend_labels = [f"{g} (n={counts[g]}, {pcts[j]:.1f}%)" for j, g in enumerate(counts.index)]
+        ax.legend(wedges, legend_labels, loc='lower center',
+                  bbox_to_anchor=(0.5, -0.18), fontsize=10,
+                  frameon=True, ncol=1)
+        ax.set_title(f'Cluster {cluster} (n={total})', fontsize=18, fontweight='bold')
+        ax.axis('equal')
+
+    # Hide any unused axes
+    for j in range(n_clusters, len(axes)):
+        axes[j].axis('off')
+
+    fig.suptitle(
+        f'{cluster_label} cluster genotype composition (non-noise clusters)',
+        fontsize=18,
+        fontweight='bold'
+    )
+    plt.tight_layout()
+
+    path = os.path.join(output_dir, 'hdbscan_cluster_genotype_pies.png')
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+    print(f"✓ Saved: {path}")
+    plt.close()
+
+
+def run_hdbscan(umap_xy, min_cluster_size=10, min_samples=None):
+    """Run HDBSCAN clustering on UMAP coordinates."""
+    print("\n" + "="*60)
+    print("STEP 2: HDBSCAN CLUSTERING")
+    print("="*60)
+    
+    print(f"\n[HDBSCAN] Running HDBSCAN...")
+    print(f"  Parameters: min_cluster_size={min_cluster_size}, min_samples={min_samples}")
+    
+    hdb = hdbscan.HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        metric='euclidean',
+        cluster_selection_method='eom'
+    )
+    clusters = hdb.fit_predict(umap_xy)
+    
+    n_clusters = len(set(clusters)) - (1 if -1 in clusters else 0)
+    n_noise = list(clusters).count(-1)
+    
+    print(f"✓ HDBSCAN complete")
+    print(f"  Found {n_clusters} clusters")
+    print(f"  Noise points: {n_noise}")
+    
+    # Return clusters and probabilities if available
+    probabilities = getattr(hdb, 'probabilities_', None)
+    return clusters, probabilities
 
 
 def cluster_genotype_enrichment(umap_df, output_dir):
@@ -526,8 +672,11 @@ def cluster_behavioral_signatures(umap_df, df_veh, top_features, output_dir):
     print("="*60)
     
     # Merge cluster assignments with feature data
-    cluster_df = umap_df[['fly_id', 'cluster']].merge(
-        df_veh[['fly_id'] + top_features],
+    # Ensure 'fly_id' is only a column label (not also an index level) on both sides
+    left = umap_df[['fly_id', 'cluster']].reset_index(drop=True)
+    right = df_veh.reset_index().loc[:, ['fly_id'] + top_features]
+    cluster_df = left.merge(
+        right,
         on='fly_id',
         how='left'
     )
@@ -660,8 +809,10 @@ def genotype_within_clusters(umap_df, df_veh, top_features, output_dir):
     print("="*60)
     
     # Merge data
-    cluster_df_geno = umap_df[['fly_id', 'genotype', 'cluster']].merge(
-        df_veh[['fly_id'] + top_features],
+    left = umap_df[['fly_id', 'genotype', 'cluster']].reset_index(drop=True)
+    right = df_veh.reset_index().loc[:, ['fly_id'] + top_features]
+    cluster_df_geno = left.merge(
+        right,
         on='fly_id',
         how='left'
     )
@@ -1029,6 +1180,7 @@ Examples:
   python umap_dbscan_analysis.py
   python umap_dbscan_analysis.py --experiment-id 1
   python umap_dbscan_analysis.py --experiment-id 1 --output-dir umap_results/
+  python umap_dbscan_analysis.py --pca-scores-csv analysis_results/pca/pca_scores.csv
         """
     )
     
@@ -1037,6 +1189,13 @@ Examples:
         type=int,
         default=None,
         help='Experiment ID to use (default: latest experiment)'
+    )
+
+    parser.add_argument(
+        '--pca-scores-csv',
+        type=str,
+        default=None,
+        help='Path to pca_scores.csv from pca_analysis.py (default: analysis_results/pca/pca_scores.csv next to this script)'
     )
     
     parser.add_argument(
@@ -1047,17 +1206,31 @@ Examples:
     )
     
     parser.add_argument(
-        '--k',
+        '--min-cluster-size',
         type=int,
-        default=5,
-        help='k parameter for DBSCAN (default: 5)'
+        default=10,
+        help='Minimum cluster size for HDBSCAN (default: 10)'
     )
     
     parser.add_argument(
-        '--eps',
+        '--min-samples',
+        type=int,
+        default=None,
+        help='Min samples for HDBSCAN (default: None → heuristic)'
+    )
+
+    # Optional DBSCAN parameters to also run DBSCAN alongside HDBSCAN
+    parser.add_argument(
+        '--dbscan-k',
+        type=int,
+        default=5,
+        help='k parameter for DBSCAN eps auto-detection (default: 5)'
+    )
+    parser.add_argument(
+        '--dbscan-eps',
         type=float,
         default=None,
-        help='eps parameter for DBSCAN (default: auto-detect)'
+        help='DBSCAN eps (default: auto-detect via kNN elbow)'
     )
     
     args = parser.parse_args()
@@ -1077,18 +1250,30 @@ Examples:
     
     # Load data from database
     df = load_data_from_db(experiment_id=args.experiment_id)
-    
+    experiment_id_int = int(df['experiment_id'].iloc[0])
+
     # Subset to vehicle
     df_veh = subset_vehicle(df)
-    
+
     if len(df_veh) == 0:
         print("\n❌ Error: No vehicle flies found in dataset!")
         print("   Make sure Treatment column contains 'VEH' values")
         sys.exit(1)
-    
-    # Prepare UMAP data
-    umap_data, available_features = prepare_umap_data(df_veh)
-    top_features = [f for f in TOP_FEATURES if f in available_features]
+
+    script_dir = Path(__file__).parent
+    pca_scores_path = args.pca_scores_csv or str(script_dir / 'analysis_results' / 'pca' / 'pca_scores.csv')
+
+    umap_data, pc_cols = prepare_umap_data_from_pca_csv(
+        df_veh, pca_scores_path, experiment_id_int, N_PCS_FOR_UMAP
+    )
+
+    df_veh = (
+        df_veh[df_veh['fly_id'].astype(str).isin(umap_data.index)]
+        .set_index('fly_id')
+        .loc[umap_data.index]
+        .reset_index()
+    )
+    top_features = [f for f in TOP_FEATURES if f in df_veh.columns]
     
     # Run UMAP
     umap_result = run_umap(umap_data, random_state=123)
@@ -1100,28 +1285,62 @@ Examples:
     plot_umap_genotype_sex(umap_df, args.output_dir)
     plot_umap_density_contours(umap_df, args.output_dir)
     
-    # DBSCAN clustering
+    # Run DBSCAN and HDBSCAN clustering
     umap_xy = umap_df[['UMAP1', 'UMAP2']].values
-    
-    if args.eps is None:
-        eps = find_optimal_eps(umap_xy, k=args.k, output_dir=args.output_dir)
+
+    # --- DBSCAN ---
+    if args.dbscan_eps is None:
+        eps_db = find_optimal_eps(umap_xy, k=args.dbscan_k, output_dir=args.output_dir)
     else:
-        eps = args.eps
-        print(f"\n[DBSCAN] Using user-specified eps: {eps}")
-    
-    clusters = run_dbscan(umap_xy, eps, k=args.k, random_state=123)
-    umap_df['cluster'] = clusters
-    
-    plot_dbscan_clusters(umap_df, args.output_dir)
+        eps_db = args.dbscan_eps
+        print(f"\n[DBSCAN] Using user-specified eps: {eps_db}")
+    clusters_db = run_dbscan(umap_xy, eps_db, k=args.dbscan_k, random_state=123)
+
+    # --- HDBSCAN ---
+    clusters, probs = run_hdbscan(
+        umap_xy,
+        min_cluster_size=args.min_cluster_size,
+        min_samples=args.min_samples
+    )
+
+    # Prepare plots (DBSCAN and HDBSCAN)
+    umap_df_db = umap_df.copy()
+    umap_df_db['cluster'] = clusters_db
+    plot_dbscan_clusters(
+        umap_df_db,
+        args.output_dir,
+        filename='dbscan_clusters.png',
+        title='DBSCAN Clusters on UMAP (Automated eps)'
+    )
+
+    umap_df_hdb = umap_df.copy()
+    umap_df_hdb['cluster'] = clusters
+    plot_dbscan_clusters(
+        umap_df_hdb,
+        args.output_dir,
+        filename='hdbscan_clusters.png',
+        title='HDBSCAN Clusters on UMAP'
+    )
+    plot_cluster_genotype_pies(
+        umap_df_hdb,
+        args.output_dir,
+        cluster_label='HDBSCAN'
+    )
     
     # Save UMAP + cluster data
-    umap_df.to_csv(
+    umap_df_out = umap_df.copy()
+    umap_df_out['cluster_dbscan'] = clusters_db
+    umap_df_out['cluster_hdbscan'] = clusters
+    if probs is not None:
+        umap_df_out['cluster_prob'] = probs
+    umap_df_out.to_csv(
         os.path.join(args.output_dir, 'umap_clusters.csv'),
         index=False
     )
     print(f"\n✓ Saved UMAP + cluster data: {args.output_dir}/umap_clusters.csv")
     
-    # Analyses
+    # Analyses (default to HDBSCAN clusters downstream)
+    umap_df = umap_df_hdb
     cluster_genotype_enrichment(umap_df, args.output_dir)
     cluster_df, cluster_summary, kw_df = cluster_behavioral_signatures(
         umap_df, df_veh, top_features, args.output_dir
@@ -1142,6 +1361,7 @@ Examples:
     print("  - umap_density_contours.png")
     print("  - knn_distance_plot.png")
     print("  - dbscan_clusters.png")
+    print("  - hdbscan_cluster_genotype_pies.png")
     print("  - cluster_genotype_enrichment.csv")
     print("  - cluster_signatures_heatmap.png")
     print("  - cluster_genotype_feature_heatmap.png")

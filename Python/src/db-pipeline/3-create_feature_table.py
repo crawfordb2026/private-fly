@@ -6,7 +6,7 @@ This script:
 1. Reads cleaned data (from Step 1 or Step 2)
 2. Extracts RHYTHM features (circadian):
    - Calculates hourly totals per fly per day per ZT
-   - Runs daily cosinor regression (per fly per day)
+   - Runs daily cosinor regression and Lomb–Scargle periodogram (per fly per day)
    - Aggregates to per-fly means and SDs
 3. Extracts SLEEP features:
    - Calculates daily sleep metrics per fly per day
@@ -24,6 +24,7 @@ import os
 import sys
 import argparse
 from scipy import stats
+from scipy.signal import lombscargle
 from sklearn.linear_model import LinearRegression
 from pathlib import Path
 from importlib import import_module
@@ -188,39 +189,103 @@ def run_daily_cosinor(hourly_data, period=24):
     })
 
 
+def run_daily_periodogram(hourly_data):
+    """
+    Compute Lomb-Scargle periodogram to detect dominant period and rhythm strength.
+
+    Args:
+        hourly_data: DataFrame with zt and hourly_MT columns (same format as run_daily_cosinor)
+
+    Returns:
+        Series with fly_id, exp_day, monitor, channel, periodogram_period, periodogram_power
+        Both periodogram features are np.nan if input contains NaN or insufficient data
+    """
+    df = hourly_data.copy()
+
+    zt_hours = df['zt'].values
+    activity_hourly = df['hourly_MT'].values
+
+    if len(activity_hourly) < 3 or np.isnan(activity_hourly).any() or np.isnan(zt_hours).any():
+        return pd.Series({
+            'fly_id': df['fly_id'].iloc[0] if len(df) > 0 else None,
+            'exp_day': df['exp_day'].iloc[0] if len(df) > 0 else None,
+            'monitor': df['monitor'].iloc[0] if len(df) > 0 and 'monitor' in df.columns else None,
+            'channel': df['channel'].iloc[0] if len(df) > 0 and 'channel' in df.columns else None,
+            'periodogram_period': np.nan,
+            'periodogram_power': np.nan
+        })
+
+    y = activity_hourly - np.mean(activity_hourly)
+
+    if np.var(y) == 0 or np.all(y == 0):
+        return pd.Series({
+            'fly_id': df['fly_id'].iloc[0],
+            'exp_day': df['exp_day'].iloc[0],
+            'monitor': df['monitor'].iloc[0] if 'monitor' in df.columns else None,
+            'channel': df['channel'].iloc[0] if 'channel' in df.columns else None,
+            'periodogram_period': np.nan,
+            'periodogram_power': np.nan
+        })
+
+    t = zt_hours * 2 * np.pi / 24
+    periods = np.linspace(18, 30, 1000)
+    freqs = 2 * np.pi / periods
+    power = lombscargle(t, y, freqs, normalize=True)
+    max_power_idx = np.argmax(power)
+    periodogram_period = periods[max_power_idx]
+    periodogram_power = power[max_power_idx]
+
+    return pd.Series({
+        'fly_id': df['fly_id'].iloc[0],
+        'exp_day': df['exp_day'].iloc[0],
+        'monitor': df['monitor'].iloc[0] if 'monitor' in df.columns else None,
+        'channel': df['channel'].iloc[0] if 'channel' in df.columns else None,
+        'periodogram_period': periodogram_period,
+        'periodogram_power': periodogram_power
+    })
+
+
 def compute_rhythm_features(dam_clean, exclude_days, period):
-    """Compute per-fly rhythm features (daily cosinor, then aggregate)."""
+    """Compute per-fly rhythm features (daily cosinor + periodogram, then aggregate)."""
     # Prepare data
     dam_rhythm = prepare_rhythm_data(dam_clean, exclude_days)
-    
+
     # Calculate hourly totals
     hourly_day = calculate_hourly_totals(dam_rhythm)
-    
-    # Run daily cosinor for each fly-day
+
+    # Run daily cosinor and periodogram for each fly-day
     daily_cosinor_list = []
-    
+    daily_periodogram_list = []
+
     for (fly_id, exp_day), group in hourly_day.groupby(['fly_id', 'exp_day']):
-        result = run_daily_cosinor(group, period)
-        daily_cosinor_list.append(result)
-    
+        cosinor_result = run_daily_cosinor(group, period)
+        periodogram_result = run_daily_periodogram(group)
+        daily_cosinor_list.append(cosinor_result)
+        daily_periodogram_list.append(periodogram_result)
+
     daily_cosinor = pd.DataFrame(daily_cosinor_list)
-    
+    daily_periodogram = pd.DataFrame(daily_periodogram_list)
+
     # Get metadata (preserve monitor and channel)
     metadata = dam_rhythm[['fly_id', 'monitor', 'channel', 'genotype', 'sex', 'treatment']].drop_duplicates()
-    
+
+    # Merge cosinor and periodogram results
+    daily_features = daily_cosinor.merge(
+        daily_periodogram[['fly_id', 'exp_day', 'periodogram_period', 'periodogram_power']],
+        on=['fly_id', 'exp_day'],
+        how='left'
+    )
+
     # Merge metadata - ensure monitor/channel are present (from Series or metadata)
-    if 'monitor' in daily_cosinor.columns and 'channel' in daily_cosinor.columns:
-        # Monitor/channel already present from Series, just merge other metadata
-        daily_features = daily_cosinor.merge(metadata[['fly_id', 'genotype', 'sex', 'treatment']], on='fly_id', how='left')
-        # Fill any missing monitor/channel values from metadata
+    if 'monitor' in daily_features.columns and 'channel' in daily_features.columns:
+        daily_features = daily_features.merge(metadata[['fly_id', 'genotype', 'sex', 'treatment']], on='fly_id', how='left')
         if daily_features['monitor'].isna().any() or daily_features['channel'].isna().any():
             monitor_channel = metadata[['fly_id', 'monitor', 'channel']]
             daily_features = daily_features.drop(columns=['monitor', 'channel'], errors='ignore')
             daily_features = daily_features.merge(monitor_channel, on='fly_id', how='left')
     else:
-        # Monitor/channel missing, merge full metadata
-        daily_features = daily_cosinor.merge(metadata, on='fly_id', how='left')
-    
+        daily_features = daily_features.merge(metadata, on='fly_id', how='left')
+
     # Aggregate to per-fly means and SDs
     cosinor_features = daily_features.groupby('fly_id').agg({
         'monitor': 'first',
@@ -231,16 +296,19 @@ def compute_rhythm_features(dam_clean, exclude_days, period):
         'Mesor': ['mean', 'std'],
         'Amp': ['mean', 'std'],
         'phase': ['mean', 'std'],
-        'Cos_p': lambda x: (x < 0.05).sum()  # rhythmic_days
+        'Cos_p': lambda x: (x < 0.05).sum(),  # rhythmic_days
+        'periodogram_period': ['mean', 'std'],
+        'periodogram_power': 'mean'
     }).reset_index()
-    
+
     # Flatten column names (all lowercase)
     cosinor_features.columns = [
         'fly_id', 'monitor', 'channel', 'genotype', 'sex', 'treatment',
         'mesor_mean', 'mesor_sd', 'amplitude_mean', 'amplitude_sd',
-        'phase_mean', 'phase_sd', 'rhythmic_days'
+        'phase_mean', 'phase_sd', 'rhythmic_days',
+        'periodogram_period_mean', 'periodogram_period_sd', 'periodogram_power_mean'
     ]
-    
+
     return cosinor_features
 
 
@@ -577,6 +645,9 @@ def create_feature_table(
                 'phase_mean': 'phase_mean',
                 'phase_sd': 'phase_sd',
                 'rhythmic_days': 'rhythmic_days',
+                'periodogram_period_mean': 'periodogram_period_mean',
+                'periodogram_period_sd': 'periodogram_period_sd',
+                'periodogram_power_mean': 'periodogram_power_mean',
                 'total_sleep_mean': 'total_sleep_mean',
                 'day_sleep_mean': 'day_sleep_mean',
                 'night_sleep_mean': 'night_sleep_mean',

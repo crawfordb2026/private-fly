@@ -177,9 +177,10 @@ def run_pca(df_veh, output_dir):
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(scree_df['PC'], scree_df['VarExp'], color='steelblue', alpha=0.7)
     ax.plot(scree_df['PC'], scree_df['VarExp'], 'o-', color='black', linewidth=2, markersize=6)
-    ax.set_xlabel('Principal Component', fontsize=12)
-    ax.set_ylabel('Proportion of Variance Explained', fontsize=12)
-    ax.set_title('Scree Plot: Variance Explained', fontsize=14, fontweight='bold')
+    ax.set_xlabel('Principal Component', fontsize=14)
+    ax.set_ylabel('Proportion of Variance Explained', fontsize=14)
+    ax.set_title('Scree Plot: Variance Explained', fontsize=18, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
     ax.grid(True, alpha=0.3)
     
     scree_path = os.path.join(output_dir, 'pca_scree_plot.png')
@@ -213,10 +214,11 @@ def run_pca(df_veh, output_dir):
                     edgecolors='black', linewidths=0.5
                 )
     
-    ax.set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)', fontsize=12)
-    ax.set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)', fontsize=12)
-    ax.set_title('PCA of Vehicle Flies (PC1 vs PC2)', fontsize=14, fontweight='bold')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+    ax.set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)', fontsize=14)
+    ax.set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)', fontsize=14)
+    ax.set_title('PCA of Vehicle Flies (PC1 vs PC2)', fontsize=18, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=14, title_fontsize=14)
     ax.grid(True, alpha=0.3)
     
     pca_plot_path = os.path.join(output_dir, 'pca_pc1_pc2.png')
@@ -243,7 +245,16 @@ def run_pca(df_veh, output_dir):
     loadings_path = os.path.join(output_dir, 'pca_loadings.csv')
     loadings.to_csv(loadings_path)
     print(f"\n✓ Saved loadings: {loadings_path}")
-    
+
+    # Save per-fly PCA scores (for UMAP or other downstream use)
+    pc_cols = [c for c in pca_scores.columns if c.startswith('PC')]
+    pc_cols_sorted = sorted(pc_cols, key=lambda x: int(x[2:]))
+    meta_present = [c for c in meta_cols if c in pca_scores.columns]
+    scores_out = pca_scores[meta_present + pc_cols_sorted]
+    scores_path = os.path.join(output_dir, 'pca_scores.csv')
+    scores_out.to_csv(scores_path, index=False)
+    print(f"✓ Saved PCA scores: {scores_path}")
+
     return pca_scores, loadings, var_exp
 
 
@@ -639,6 +650,7 @@ Examples:
     print("  - pca_scree_plot.png")
     print("  - pca_pc1_pc2.png")
     print("  - pca_loadings.csv")
+    print("  - pca_scores.csv")
     print("  - genotype_comparison_summary.csv")
     print("  - genotype_signature_heatmap.png")
     print("  - genotype_signature_matrix.csv")
