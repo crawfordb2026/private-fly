@@ -535,15 +535,21 @@ def clean_ml_features(
             # Database schema only has specific z-scored columns (no rhythmic_days_z, n_days_z, etc.)
             # List of valid z-scored columns in features_z table
             valid_z_cols = [
+                # Rhythm / circadian features
                 'mesor_mean_z', 'mesor_sd_z', 'amplitude_mean_z', 'amplitude_sd_z',
-                'phase_mean_z', 'phase_sd_z', 'total_sleep_mean_z', 'day_sleep_mean_z',
+                'phase_mean_z', 'phase_sd_z',
+                'periodogram_period_mean_z', 'periodogram_period_sd_z', 'periodogram_power_mean_z',
+                'activity_onset_zt_mean_z', 'activity_onset_zt_sd_z',
+                'activity_offset_zt_mean_z', 'activity_offset_zt_sd_z',
+                'interdaily_stability_z',
+                # Sleep features
+                'total_sleep_mean_z', 'day_sleep_mean_z',
                 'night_sleep_mean_z', 'total_bouts_mean_z', 'day_bouts_mean_z',
                 'night_bouts_mean_z', 'mean_bout_mean_z', 'max_bout_mean_z',
                 'mean_day_bout_mean_z', 'max_day_bout_mean_z', 'mean_night_bout_mean_z',
                 'max_night_bout_mean_z', 'frag_bouts_per_hour_mean_z',
                 'frag_bouts_per_min_sleep_mean_z', 'mean_wake_bout_mean_z',
                 'p_wake_mean_z', 'p_doze_mean_z', 'sleep_latency_mean_z', 'waso_mean_z',
-                'periodogram_period_mean_z', 'periodogram_period_sd_z', 'periodogram_power_mean_z'
             ]
             
             # Select only columns that are in the valid list

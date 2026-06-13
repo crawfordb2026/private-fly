@@ -177,10 +177,10 @@ def run_pca(df_veh, output_dir):
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(scree_df['PC'], scree_df['VarExp'], color='steelblue', alpha=0.7)
     ax.plot(scree_df['PC'], scree_df['VarExp'], 'o-', color='black', linewidth=2, markersize=6)
-    ax.set_xlabel('Principal Component', fontsize=14)
-    ax.set_ylabel('Proportion of Variance Explained', fontsize=14)
-    ax.set_title('Scree Plot: Variance Explained', fontsize=18, fontweight='bold')
-    ax.tick_params(axis='both', labelsize=14)
+    ax.set_xlabel('Principal Component', fontsize=18)
+    ax.set_ylabel('Proportion of Variance Explained', fontsize=18)
+    ax.set_title('Scree Plot: Variance Explained', fontsize=24, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=16)
     ax.grid(True, alpha=0.3)
     
     scree_path = os.path.join(output_dir, 'pca_scree_plot.png')
@@ -214,11 +214,11 @@ def run_pca(df_veh, output_dir):
                     edgecolors='black', linewidths=0.5
                 )
     
-    ax.set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)', fontsize=14)
-    ax.set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)', fontsize=14)
-    ax.set_title('PCA of Vehicle Flies (PC1 vs PC2)', fontsize=18, fontweight='bold')
-    ax.tick_params(axis='both', labelsize=14)
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=14, title_fontsize=14)
+    ax.set_xlabel(f'PC1 ({var_exp[0]*100:.1f}%)', fontsize=18)
+    ax.set_ylabel(f'PC2 ({var_exp[1]*100:.1f}%)', fontsize=18)
+    ax.set_title('PCA of Vehicle Flies (PC1 vs PC2)', fontsize=24, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=16)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=16, title_fontsize=17)
     ax.grid(True, alpha=0.3)
     
     pca_plot_path = os.path.join(output_dir, 'pca_pc1_pc2.png')

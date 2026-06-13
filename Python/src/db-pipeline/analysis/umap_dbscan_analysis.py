@@ -338,11 +338,11 @@ def plot_umap_genotype_sex(umap_df, output_dir):
                     edgecolors='black', linewidths=0.5
                 )
     
-    ax.set_xlabel('UMAP1', fontsize=14)
-    ax.set_ylabel('UMAP2', fontsize=14)
-    ax.set_title('UMAP of Vehicle Flies (Genotype + Sex)', fontsize=18, fontweight='bold')
-    ax.tick_params(axis='both', labelsize=14)
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=14, title_fontsize=14)
+    ax.set_xlabel('UMAP1', fontsize=18)
+    ax.set_ylabel('UMAP2', fontsize=18)
+    ax.set_title('UMAP of Vehicle Flies (Genotype + Sex)', fontsize=24, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=16)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=16, title_fontsize=17)
     ax.grid(True, alpha=0.3)
     
     path = os.path.join(output_dir, 'umap_genotype_sex.png')
@@ -505,11 +505,11 @@ def plot_dbscan_clusters(umap_df, output_dir, filename='dbscan_clusters.png', ti
             s=100, alpha=0.9, edgecolors='black', linewidths=0.5
         )
     
-    ax.set_xlabel('UMAP1', fontsize=14)
-    ax.set_ylabel('UMAP2', fontsize=14)
-    ax.set_title(title, fontsize=18, fontweight='bold')
-    ax.tick_params(axis='both', labelsize=14)
-    ax.legend(title='Cluster', fontsize=14, title_fontsize=14)
+    ax.set_xlabel('UMAP1', fontsize=18)
+    ax.set_ylabel('UMAP2', fontsize=18)
+    ax.set_title(title, fontsize=24, fontweight='bold')
+    ax.tick_params(axis='both', labelsize=16)
+    ax.legend(title='Cluster', fontsize=16, title_fontsize=17)
     ax.grid(True, alpha=0.3)
     
     path = os.path.join(output_dir, filename)
@@ -565,13 +565,13 @@ def plot_cluster_genotype_pies(umap_df, output_dir, cluster_label='HDBSCAN'):
             pctdistance=0.75,
             startangle=90,
             counterclock=False,
-            textprops={'fontsize': 11}
+            textprops={'fontsize': 14}
         )
         legend_labels = [f"{g} (n={counts[g]}, {pcts[j]:.1f}%)" for j, g in enumerate(counts.index)]
         ax.legend(wedges, legend_labels, loc='lower center',
-                  bbox_to_anchor=(0.5, -0.18), fontsize=10,
+                  bbox_to_anchor=(0.5, -0.18), fontsize=13,
                   frameon=True, ncol=1)
-        ax.set_title(f'Cluster {cluster} (n={total})', fontsize=18, fontweight='bold')
+        ax.set_title(f'Cluster {cluster} (n={total})', fontsize=22, fontweight='bold')
         ax.axis('equal')
 
     # Hide any unused axes
@@ -580,7 +580,7 @@ def plot_cluster_genotype_pies(umap_df, output_dir, cluster_label='HDBSCAN'):
 
     fig.suptitle(
         f'{cluster_label} cluster genotype composition (non-noise clusters)',
-        fontsize=18,
+        fontsize=24,
         fontweight='bold'
     )
     plt.tight_layout()
@@ -591,7 +591,7 @@ def plot_cluster_genotype_pies(umap_df, output_dir, cluster_label='HDBSCAN'):
     plt.close()
 
 
-def run_hdbscan(umap_xy, min_cluster_size=10, min_samples=None):
+def run_hdbscan(umap_xy, min_cluster_size=10, min_samples=3): # changing this wont change the hyperparemeters look at like 1218 for the true default params
     """Run HDBSCAN clustering on UMAP coordinates."""
     print("\n" + "="*60)
     print("STEP 2: HDBSCAN CLUSTERING")
@@ -1215,8 +1215,8 @@ Examples:
     parser.add_argument(
         '--min-samples',
         type=int,
-        default=None,
-        help='Min samples for HDBSCAN (default: None → heuristic)'
+        default=3,
+        help='Min samples for HDBSCAN (default: 3)'
     )
 
     # Optional DBSCAN parameters to also run DBSCAN alongside HDBSCAN

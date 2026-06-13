@@ -74,10 +74,15 @@ SHORT_LABELS = {
     "amplitude_mean_z": "Amplitude",
     "amplitude_sd_z": "Amplitude variation",
     "phase_mean_z": "Phase",
-    "phase_sd_z": "Phase Variation",
+    "phase_sd_z": "Phase variation",
     "periodogram_period_mean_z": "Period",
-    "periodogram_period_sd_z": "Period Variation",
+    "periodogram_period_sd_z": "Period variation",
     "periodogram_power_mean_z": "Rhythmicity",
+    "activity_onset_zt_mean_z": "Activity onset",
+    "activity_onset_zt_sd_z": "Activity onset variation",
+    "activity_offset_zt_mean_z": "Activity offset",
+    "activity_offset_zt_sd_z": "Activity offset variation",
+    "interdaily_stability_z": "Interdaily stability",
     "total_sleep_mean_z": "Total sleep time",
     "day_sleep_mean_z": "Daytime sleep",
     "night_sleep_mean_z": "Nighttime sleep",
@@ -316,15 +321,16 @@ def plot_heatmap(results_df, plots_dir, alpha=0.05):
         linewidths=0.3,
         ax=ax,
         cbar_kws={'label': 'Rank-biserial r'},
+        annot_kws={'fontsize': 13},
     )
-    ax.set_title(f'Cluster × Feature heatmap\n(significant features, p_adj < {alpha})', fontsize=18, fontweight='bold')
-    ax.set_xlabel('Cluster', fontsize=14)
-    ax.set_ylabel('Feature', fontsize=14)
-    ax.tick_params(axis='x', labelsize=14)
-    ax.tick_params(axis='y', labelsize=14)
+    ax.set_title(f'Cluster × Feature heatmap\n(significant features, p_adj < {alpha})', fontsize=24, fontweight='bold')
+    ax.set_xlabel('Cluster', fontsize=18)
+    ax.set_ylabel('Feature', fontsize=18)
+    ax.tick_params(axis='x', labelsize=16)
+    ax.tick_params(axis='y', labelsize=16)
     cbar = hm.collections[0].colorbar
-    cbar.set_label('Rank-biserial r', fontsize=14)
-    cbar.ax.tick_params(labelsize=14)
+    cbar.set_label('Rank-biserial r', fontsize=18)
+    cbar.ax.tick_params(labelsize=16)
     plt.tight_layout(pad=1.2)
 
     out_path = plots_dir / 'cluster_feature_heatmap.png'

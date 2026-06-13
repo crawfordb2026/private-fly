@@ -1,0 +1,140 @@
+ML FEATURES CLEANING DIAGNOSTICS
+============================================================
+
+Original flies: 950
+Cleaned flies: 851
+Removed: 99
+
+Removed Flies:
+           fly_id genotype    sex treatment  total_sleep_mean  total_bouts_mean  never_slept  zero_sleep_bouts  p_doze_mean
+M51_06_20_25_Ch31      Fmn Female   2mM Arg               0.0               0.0         True              True          0.0
+M54_06_20_25_Ch19      Fmn Female   2mM Arg               0.0               0.0         True              True          0.0
+M13_10_16_25_Ch16      Fmn Female   2mM Spd               0.0               0.0         True              True          0.0
+M51_06_20_25_Ch32      Fmn Female   8mM Arg               0.0               0.0         True              True          0.0
+M52_06_20_25_Ch06      Fmn Female   8mM Arg               0.0               0.0         True              True          0.0
+M52_06_20_25_Ch32      Fmn Female   8mM Arg               0.0               0.0         True              True          0.0
+M53_06_20_25_Ch06      Fmn Female   8mM Arg               0.0               0.0         True              True          0.0
+M53_06_20_25_Ch20      Fmn Female   8mM Arg               0.0               0.0         True              True          0.0
+M52_06_20_25_Ch18      Fmn Female       VEH               0.0               0.0         True              True          0.0
+M53_06_20_25_Ch04      Fmn Female       VEH               0.0               0.0         True              True          0.0
+M54_06_20_25_Ch04      Fmn Female       VEH               0.0               0.0         True              True          0.0
+M55_06_20_25_Ch20      Fmn   Male   8mM Arg               0.0               0.0         True              True          0.0
+M11_10_02_25_Ch01      SSS Female   2mM Cys               0.0               0.0         True              True          0.0
+M11_10_02_25_Ch25      SSS Female   2mM Cys               0.0               0.0         True              True          0.0
+ M5_09_25_25_Ch28      SSS Female   2mM His               0.0               0.0         True              True          0.0
+ M6_09_25_25_Ch13      SSS Female   2mM His               0.0               0.0         True              True          0.0
+ M6_09_25_25_Ch28      SSS Female   2mM His               0.0               0.0         True              True          0.0
+M12_10_16_25_Ch22      SSS Female   2mM Spd               0.0               0.0         True              True          0.0
+M51_06_20_25_Ch14      SSS Female   8mM Arg               0.0               0.0         True              True          0.0
+M52_06_20_25_Ch14      SSS Female   8mM Arg               0.0               0.0         True              True          0.0
+M11_10_02_25_Ch27      SSS Female       VEH               0.0               0.0         True              True          0.0
+M12_10_02_25_Ch05      SSS Female       VEH               0.0               0.0         True              True          0.0
+M14_10_02_25_Ch13      SSS Female       VEH               0.0               0.0         True              True          0.0
+M15_10_02_25_Ch05      SSS Female       VEH               0.0               0.0         True              True          0.0
+ M7_10_02_25_Ch31      SSS   Male   2mM Cys               0.0               0.0         True              True          0.0
+M13_09_25_25_Ch01      SSS   Male   2mM His               0.0               0.0         True              True          0.0
+M13_09_25_25_Ch13      SSS   Male   2mM His               0.0               0.0         True              True          0.0
+ M5_10_16_25_Ch23      SSS   Male   2mM Put               0.0               0.0         True              True          0.0
+ M6_10_16_25_Ch23      SSS   Male   2mM Put               0.0               0.0         True              True          0.0
+ M7_10_16_25_Ch23      SSS   Male   2mM Put               0.0               0.0         True              True          0.0
+ M7_10_16_25_Ch29      SSS   Male   2mM Put               0.0               0.0         True              True          0.0
+M56_06_20_25_Ch14      SSS   Male   8mM Arg               0.0               0.0         True              True          0.0
+M57_06_20_25_Ch14      SSS   Male   8mM Arg               0.0               0.0         True              True          0.0
+M11_09_25_25_Ch02      SSS   Male   8mM His               0.0               0.0         True              True          0.0
+M11_09_25_25_Ch03      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M5_10_02_25_Ch03      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M6_10_02_25_Ch05      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M6_10_16_25_Ch24      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M7_10_02_25_Ch21      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M8_10_02_25_Ch13      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M8_10_16_25_Ch24      SSS   Male       VEH               0.0               0.0         True              True          0.0
+ M9_10_02_25_Ch05      SSS   Male       VEH               0.0               0.0         True              True          0.0
+
+IQR Outlier Summary:
+genotype    sex treatment  n_total  n_outliers  percent_outliers
+     Fmn Female   2mM Arg        8           1              12.5
+     Fmn Female   2mM Cys       11           0               0.0
+     Fmn Female   2mM His        5           1              20.0
+     Fmn Female   2mM Put       10           0               0.0
+     Fmn Female   2mM Spd        8           0               0.0
+     Fmn Female   2mM Thr        3           0               0.0
+     Fmn Female   4mM Cys        6           1              16.7
+     Fmn Female   8mM Arg        5           0               0.0
+     Fmn Female   8mM His        2           0               0.0
+     Fmn Female   8mM Thr        4           1              25.0
+     Fmn Female       VEH       42           0               0.0
+     Fmn   Male   2mM Arg        9           1              11.1
+     Fmn   Male   2mM Cys       12           2              16.7
+     Fmn   Male   2mM His        5           0               0.0
+     Fmn   Male   2mM Put       10           0               0.0
+     Fmn   Male   2mM Spd        8           0               0.0
+     Fmn   Male   2mM Thr        4           0               0.0
+     Fmn   Male   4mM Cys       11           0               0.0
+     Fmn   Male   8mM Arg        9           1              11.1
+     Fmn   Male   8mM His        4           0               0.0
+     Fmn   Male   8mM Thr       10           0               0.0
+     Fmn   Male       VEH       42           3               7.1
+     Iso Female   2mM Arg       10           0               0.0
+     Iso Female   2mM Cys       12           1               8.3
+     Iso Female   2mM His        7           0               0.0
+     Iso Female   2mM Put       10           3              30.0
+     Iso Female   2mM Spd        9           0               0.0
+     Iso Female   2mM Thr        6           0               0.0
+     Iso Female   4mM Cys       13           2              15.4
+     Iso Female   8mM Arg       10           1              10.0
+     Iso Female   8mM His        7           0               0.0
+     Iso Female   8mM Thr        7           1              14.3
+     Iso Female       VEH       45           0               0.0
+     Iso   Male   2mM Arg       10           2              20.0
+     Iso   Male   2mM Cys       12           1               8.3
+     Iso   Male   2mM His        8           1              12.5
+     Iso   Male   2mM Put        9           1              11.1
+     Iso   Male   2mM Spd       10           0               0.0
+     Iso   Male   2mM Thr        8           0               0.0
+     Iso   Male   4mM Cys       12           1               8.3
+     Iso   Male   8mM Arg       10           0               0.0
+     Iso   Male   8mM His        8           1              12.5
+     Iso   Male   8mM Thr        5           0               0.0
+     Iso   Male       VEH       43           1               2.3
+     Rye Female   2mM Arg        6           2              33.3
+     Rye Female   2mM Cys       13           0               0.0
+     Rye Female   2mM His        4           0               0.0
+     Rye Female   2mM Put        7           1              14.3
+     Rye Female   2mM Spd        9           0               0.0
+     Rye Female   2mM Thr        9           0               0.0
+     Rye Female   4mM Cys       10           0               0.0
+     Rye Female   8mM Arg        6           2              33.3
+     Rye Female   8mM His        4           0               0.0
+     Rye Female   8mM Thr        3           0               0.0
+     Rye Female       VEH       30           1               3.3
+     Rye   Male   2mM Arg       10           0               0.0
+     Rye   Male   2mM Cys       12           0               0.0
+     Rye   Male   2mM His        4           0               0.0
+     Rye   Male   2mM Put        8           0               0.0
+     Rye   Male   2mM Spd       10           0               0.0
+     Rye   Male   2mM Thr        9           2              22.2
+     Rye   Male   4mM Cys       14           0               0.0
+     Rye   Male   8mM Arg       10           0               0.0
+     Rye   Male   8mM His        1           0               0.0
+     Rye   Male   8mM Thr        7           0               0.0
+     Rye   Male       VEH       28           0               0.0
+     SSS Female   2mM Cys       10           1              10.0
+     SSS Female   2mM His       11           1               9.1
+     SSS Female   2mM Put        9           0               0.0
+     SSS Female   2mM Spd        8           1              12.5
+     SSS Female   2mM Thr        1           0               0.0
+     SSS Female   4mM Cys       11           1               9.1
+     SSS Female   8mM Arg        1           0               0.0
+     SSS Female   8mM His       14           2              14.3
+     SSS Female   8mM Thr        9           0               0.0
+     SSS Female       VEH       28           4              14.3
+     SSS   Male   2mM Cys       10           0               0.0
+     SSS   Male   2mM His       12           1               8.3
+     SSS   Male   2mM Put        6           1              16.7
+     SSS   Male   2mM Spd        3           0               0.0
+     SSS   Male   2mM Thr        4           0               0.0
+     SSS   Male   4mM Cys        6           1              16.7
+     SSS   Male   8mM Arg        2           0               0.0
+     SSS   Male   8mM His       13           3              23.1
+     SSS   Male   8mM Thr        5           1              20.0
+     SSS   Male       VEH       32           5              15.6

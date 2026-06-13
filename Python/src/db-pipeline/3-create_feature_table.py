@@ -245,6 +245,86 @@ def run_daily_periodogram(hourly_data):
     })
 
 
+def run_daily_onset_offset(hourly_data, threshold_sd=1.0, min_bins=2):
+    """
+    Detect activity onset and offset for one fly-day.
+
+    Onset: first sustained crossing above threshold after the daily minimum.
+    Offset: last above-threshold bin followed by a sustained below-threshold period.
+    Threshold = 10th-percentile baseline + 1 SD of the smoothed profile.
+    """
+    df = hourly_data.sort_values('zt').copy()
+    zt = df['zt'].values
+    y = df['hourly_MT'].values.astype(float)
+
+    null = pd.Series({
+        'fly_id': df['fly_id'].iloc[0] if len(df) > 0 else None,
+        'exp_day': df['exp_day'].iloc[0] if len(df) > 0 else None,
+        'daily_activity_onset_zt': np.nan,
+        'daily_activity_offset_zt': np.nan,
+    })
+
+    if len(y) < 3 or np.isnan(y).any():
+        return null
+
+    smoothed = pd.Series(y).rolling(3, center=True, min_periods=1).mean().values
+    threshold = np.percentile(smoothed, 10) + threshold_sd * np.std(smoothed)
+    above = smoothed > threshold
+
+    # Onset: first sustained crossing above threshold after the daily minimum
+    onset_zt = np.nan
+    min_idx = int(np.argmin(smoothed))
+    for i in range(min_idx, len(above) - min_bins + 1):
+        if np.all(above[i:i + min_bins]):
+            onset_zt = zt[i]
+            break
+
+    # Offset: last above-threshold bin followed by a sustained below-threshold period
+    offset_zt = np.nan
+    for i in range(len(above) - min_bins - 1, -1, -1):
+        if above[i] and np.all(~above[i + 1:i + 1 + min_bins]):
+            offset_zt = zt[i]
+            break
+
+    return pd.Series({
+        'fly_id': df['fly_id'].iloc[0],
+        'exp_day': df['exp_day'].iloc[0],
+        'daily_activity_onset_zt': onset_zt,
+        'daily_activity_offset_zt': offset_zt,
+    })
+
+
+def compute_interdaily_stability(hourly_day):
+    """
+    Compute interdaily stability (IS) per fly from the full multi-day hourly time series.
+
+    IS = [n * sum_h(mean_h - grand_mean)^2] / [p * sum_i(x_i - grand_mean)^2]
+    where p = hours per day, n = total hourly bins, mean_h = mean activity at each ZT hour.
+    """
+    results = []
+    for fly_id, group in hourly_day.groupby('fly_id'):
+        x = group['hourly_MT'].values.astype(float)
+
+        if len(x) < 2 or np.isnan(x).any():
+            results.append({'fly_id': fly_id, 'interdaily_stability': np.nan})
+            continue
+
+        grand_mean = np.mean(x)
+        denom = np.sum((x - grand_mean) ** 2)
+
+        if denom == 0:
+            results.append({'fly_id': fly_id, 'interdaily_stability': np.nan})
+            continue
+
+        hourly_means = group.groupby('zt')['hourly_MT'].mean()
+        p = len(hourly_means)
+        n = len(x)
+        is_val = (n * np.sum((hourly_means.values - grand_mean) ** 2)) / (p * denom)
+        results.append({'fly_id': fly_id, 'interdaily_stability': is_val})
+
+    return pd.DataFrame(results)
+
+
 def compute_rhythm_features(dam_clean, exclude_days, period):
     """Compute per-fly rhythm features (daily cosinor + periodogram, then aggregate)."""
     # Prepare data
@@ -253,27 +333,37 @@ def compute_rhythm_features(dam_clean, exclude_days, period):
     # Calculate hourly totals
     hourly_day = calculate_hourly_totals(dam_rhythm)
 
-    # Run daily cosinor and periodogram for each fly-day
+    # Compute interdaily stability from full cross-day series (one value per fly)
+    is_features = compute_interdaily_stability(hourly_day)
+
+    # Run daily cosinor, periodogram, and onset/offset for each fly-day
     daily_cosinor_list = []
     daily_periodogram_list = []
+    daily_onset_offset_list = []
 
     for (fly_id, exp_day), group in hourly_day.groupby(['fly_id', 'exp_day']):
         cosinor_result = run_daily_cosinor(group, period)
         periodogram_result = run_daily_periodogram(group)
+        onset_offset_result = run_daily_onset_offset(group)
         daily_cosinor_list.append(cosinor_result)
         daily_periodogram_list.append(periodogram_result)
+        daily_onset_offset_list.append(onset_offset_result)
 
     daily_cosinor = pd.DataFrame(daily_cosinor_list)
     daily_periodogram = pd.DataFrame(daily_periodogram_list)
+    daily_onset_offset = pd.DataFrame(daily_onset_offset_list)
 
     # Get metadata (preserve monitor and channel)
     metadata = dam_rhythm[['fly_id', 'monitor', 'channel', 'genotype', 'sex', 'treatment']].drop_duplicates()
 
-    # Merge cosinor and periodogram results
+    # Merge all daily results
     daily_features = daily_cosinor.merge(
         daily_periodogram[['fly_id', 'exp_day', 'periodogram_period', 'periodogram_power']],
         on=['fly_id', 'exp_day'],
         how='left'
+    ).merge(
+        daily_onset_offset[['fly_id', 'exp_day', 'daily_activity_onset_zt', 'daily_activity_offset_zt']],
+        on=['fly_id', 'exp_day'], how='left'
     )
 
     # Merge metadata - ensure monitor/channel are present (from Series or metadata)
@@ -298,7 +388,9 @@ def compute_rhythm_features(dam_clean, exclude_days, period):
         'phase': ['mean', 'std'],
         'Cos_p': lambda x: (x < 0.05).sum(),  # rhythmic_days
         'periodogram_period': ['mean', 'std'],
-        'periodogram_power': 'mean'
+        'periodogram_power': 'mean', # rhythmicity
+        'daily_activity_onset_zt': ['mean', 'std'],
+        'daily_activity_offset_zt': ['mean', 'std'],
     }).reset_index()
 
     # Flatten column names (all lowercase)
@@ -306,8 +398,13 @@ def compute_rhythm_features(dam_clean, exclude_days, period):
         'fly_id', 'monitor', 'channel', 'genotype', 'sex', 'treatment',
         'mesor_mean', 'mesor_sd', 'amplitude_mean', 'amplitude_sd',
         'phase_mean', 'phase_sd', 'rhythmic_days',
-        'periodogram_period_mean', 'periodogram_period_sd', 'periodogram_power_mean'
+        'periodogram_period_mean', 'periodogram_period_sd', 'periodogram_power_mean',
+        'activity_onset_zt_mean', 'activity_onset_zt_sd',
+        'activity_offset_zt_mean', 'activity_offset_zt_sd',
     ]
+
+    # Merge interdaily stability (one value per fly, computed across all days)
+    cosinor_features = cosinor_features.merge(is_features, on='fly_id', how='left')
 
     return cosinor_features
 
@@ -648,6 +745,11 @@ def create_feature_table(
                 'periodogram_period_mean': 'periodogram_period_mean',
                 'periodogram_period_sd': 'periodogram_period_sd',
                 'periodogram_power_mean': 'periodogram_power_mean',
+                'activity_onset_zt_mean': 'activity_onset_zt_mean',
+                'activity_onset_zt_sd': 'activity_onset_zt_sd',
+                'activity_offset_zt_mean': 'activity_offset_zt_mean',
+                'activity_offset_zt_sd': 'activity_offset_zt_sd',
+                'interdaily_stability': 'interdaily_stability',
                 'total_sleep_mean': 'total_sleep_mean',
                 'day_sleep_mean': 'day_sleep_mean',
                 'night_sleep_mean': 'night_sleep_mean',

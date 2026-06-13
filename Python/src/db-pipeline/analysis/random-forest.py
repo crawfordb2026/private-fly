@@ -335,13 +335,13 @@ def evaluate_model(model, X_test, y_test, output_dir):
         cmap='Blues',
         xticklabels=classes,
         yticklabels=classes,
-        annot_kws={'fontsize': 18}
+        annot_kws={'fontsize': 20}
     )
-    plt.title('Confusion Matrix (Test Set)', fontsize=18, fontweight='bold')
-    plt.ylabel('True Label', fontsize=14)
-    plt.xlabel('Predicted Label', fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
+    plt.title('Confusion Matrix (Test Set)', fontsize=24, fontweight='bold')
+    plt.ylabel('True Label', fontsize=18)
+    plt.xlabel('Predicted Label', fontsize=18)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'), dpi=300)
     plt.close()
@@ -400,10 +400,15 @@ def plot_feature_importance(model, feature_names, output_dir, top_n=28):
         "amplitude_mean_z": "Amplitude",
         "amplitude_sd_z": "Amplitude variation",
         "phase_mean_z": "Phase",
-        "phase_sd_z": "Phase Variation",
+        "phase_sd_z": "Phase variation",
         "periodogram_period_mean_z": "Period",
-        "periodogram_period_sd_z": "Period Variation",
+        "periodogram_period_sd_z": "Period variation",
         "periodogram_power_mean_z": "Rhythmicity",
+        "activity_onset_zt_mean_z": "Activity onset",
+        "activity_onset_zt_sd_z": "Activity onset variation",
+        "activity_offset_zt_mean_z": "Activity offset",
+        "activity_offset_zt_sd_z": "Activity offset variation",
+        "interdaily_stability_z": "Interdaily stability",
         "total_sleep_mean_z": "Total sleep time",
         "day_sleep_mean_z": "Daytime sleep",
         "night_sleep_mean_z": "Nighttime sleep",
@@ -426,16 +431,24 @@ def plot_feature_importance(model, feature_names, output_dir, top_n=28):
     }
     importance_df['display'] = importance_df['feature'].map(lambda x: short_labels.get(x, x))
 
-    plt.figure(figsize=(10, 8))
-    sns.barplot(data=importance_df, y='display', x='importance', palette='viridis')
-    plt.title(f'Top {top_n} Feature Importance (Random Forest)', fontsize=18, fontweight='bold')
-    plt.xlabel('Importance', fontsize=14)
-    plt.ylabel('Feature', fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'feature_importance.png'), dpi=300)
-    plt.close()
+    fig, ax = plt.subplots(figsize=(11, 8.5))
+    sns.barplot(data=importance_df, y='display', x='importance', palette='viridis', ax=ax)
+    ax.set_xlabel('Importance', fontsize=18)
+    ax.set_ylabel('Feature', fontsize=18)
+    ax.tick_params(axis='x', labelsize=16)
+    ax.tick_params(axis='y', labelsize=16)
+    # Figure title: centered on full canvas (not the axes box, which is offset by long y labels)
+    fig.suptitle(
+        f'Top {top_n} Feature Importance (Random Forest)',
+        fontsize=24,
+        fontweight='bold',
+        x=0.5,
+        ha='center',
+    )
+    # rect top was 0.90, leaving a tall empty band; ~0.965 tightens space below the title
+    fig.tight_layout(rect=[0, 0, 1, 0.965], pad=1.0)
+    fig.savefig(os.path.join(output_dir, 'feature_importance.png'), dpi=300, bbox_inches='tight')
+    plt.close(fig)
     print(f"  ✓ Saved feature importance plot: {output_dir}/feature_importance.png")
     
     return importance_df

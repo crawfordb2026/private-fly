@@ -8,10 +8,13 @@ Python/src/db-pipeline/analysis/generate_results_summary.py
 Python/src/db-pipeline/analysis/RESULTS_SUMMARY.md
 Python/src/db-pipeline/FEATURE_SPECIFICATION_FOR_REVIEW.md
 Python/src/db-pipeline/hmm_plots
+zOldDetails
+HOW_TO_USE.md
 
 # Ignore monitor directories
 Python/Monitors_raw/
 Python/Monitors_date_filtered/
+Python/details.txt
 
 #ignore results directory
 Python/src/db-pipeline/analysis/analysis_results/
